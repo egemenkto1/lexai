@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lex_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    ports:
+      - "5433:5432" # BURAYI DEĞİŞTİRDİK
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  opensearch-node:
+    image: opensearchproject/opensearch:2.11.1
+    container_name: lex_opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: lex_qdrant
+    ports:
+      - "6333:6333" # REST
+      - "6334:6334" # gRPC (C# buradan bağlanacak)
+
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.2
+    container_name: lex_tei
+    command: --model-id BAAI/bge-m3 --auto-truncate
+    ports:
+      - "8080:80"
+      
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lex_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+  
+  # --- MINIO: Yerel S3 Nesne Depolama (Karar metinlerini tutacak) ---
+  minio:
+    image: minio/minio:latest
+    container_name: lex_minio
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "9000:9000" # API Portu
+      - "9001:9001" # Web Arayüzü (Console) Portu
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # --- RABBITMQ: Mesaj Kuyruk Sistemi (Asenkron veri işleme) ---
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: lex_rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:?Set RABBITMQ_DEFAULT_USER in .env}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_DEFAULT_PASS in .env}
+    ports:
+      - "5672:5672"   # Uygulamaların bağlanacağı AMQP portu
+      - "15672:15672" # Web Arayüzü (Management) Portu
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  postgres_data:
+  ollama_data:
+  minio_data:
+  rabbitmq_data:
